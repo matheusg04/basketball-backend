@@ -1,4 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -11,7 +16,17 @@ export class TeamsService {
     private teamRepository: Repository<Team>,
   ) {}
 
-  create(teamData: Partial<Team>) {
+  async create(teamData: Partial<Team>) {
+    teamData.name = teamData.name?.trim();
+    teamData.city = teamData.city?.trim();
+    teamData.coach = teamData.coach?.trim();
+
+    if (!teamData.name || !teamData.city || !teamData.coach) {
+      throw new BadRequestException(
+        'Nome, cidade e treinador são obrigatórios.',
+      );
+    }
+
     const team = this.teamRepository.create(teamData);
 
     return this.teamRepository.save(team);
@@ -26,6 +41,22 @@ export class TeamsService {
   }
 
   async update(id: number, data: Partial<Team>) {
+    const team = await this.findOne(id);
+
+    if (!team) {
+      throw new NotFoundException('Time não encontrado.');
+    }
+
+    data.name = data.name?.trim();
+    data.city = data.city?.trim();
+    data.coach = data.coach?.trim();
+
+    if (!data.name || !data.city || !data.coach) {
+      throw new BadRequestException(
+        'Nome, cidade e treinador são obrigatórios.',
+      );
+    }
+
     await this.teamRepository.update(id, data);
 
     return this.findOne(id);
@@ -35,9 +66,15 @@ export class TeamsService {
     const team = await this.findOne(id);
 
     if (!team) {
-      throw new Error('Time não encontrado');
+      throw new NotFoundException('Time não encontrado.');
     }
 
-    return this.teamRepository.remove(team);
+    try {
+      return await this.teamRepository.remove(team);
+    } catch {
+      throw new BadRequestException(
+        'Não é possível excluir um time que possui jogadores cadastrados.',
+      );
+    }
   }
 }

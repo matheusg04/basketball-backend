@@ -10,17 +10,24 @@ import { Team } from '../teams/team.entity';
 @Entity()
 export class Player {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column()
-  name: string;
+  name!: string;
 
   @Column()
-  age: number;
+  age!: number;
 
   @Column()
-  position: string;
+  position!: string;
 
-  @ManyToOne(() => Team)
-  team: Team;
+  @ManyToOne(
+    () => Team,
+    (team) => team.players,
+    {
+      nullable: false,
+      onDelete: 'RESTRICT',
+    },
+  )
+  team!: Team;
 }

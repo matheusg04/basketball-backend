@@ -1,4 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { Repository } from 'typeorm';
@@ -17,31 +22,49 @@ export class PlayersService {
   ) {}
 
   async create(data: any) {
-    const team = await this.teamRepository.findOneBy({
-      id: data.teamId,
+    const team = await this.teamRepository.findOne({
+      where: {
+        id: data.teamId,
+      },
+      relations: ['players'],
     });
 
     if (!team) {
-      throw new Error('Time não encontrado');
+      throw new NotFoundException('Time não encontrado.');
+    }
+
+    if (team.players.length >= 15) {
+      throw new BadRequestException(
+        'Este time já possui o limite máximo de 15 jogadores.',
+      );
     }
 
     const player = this.playerRepository.create({
-      name: data.name,
+      name: data.name.trim(),
       age: data.age,
-      position: data.position,
-      team: team,
+      position: data.position.trim(),
+      team,
     });
 
     return this.playerRepository.save(player);
   }
 
-  findAll() {
-    return this.playerRepository.find({
-      relations: ['team'],
-    });
+  async findAll() {
+    return this.playerRepository
+      .createQueryBuilder('player')
+      .leftJoinAndSelect('player.team', 'team')
+      .select([
+        'player.id',
+        'player.name',
+        'player.age',
+        'player.position',
+        'team.id',
+        'team.name',
+      ])
+      .getMany();
   }
 
-  findByTeam(teamId: number) {
+  async findByTeam(teamId: number) {
     return this.playerRepository.find({
       where: {
         team: {
@@ -52,9 +75,11 @@ export class PlayersService {
     });
   }
 
-  findOne(id: number) {
+  async findOne(id: number) {
     return this.playerRepository.findOne({
-      where: { id },
+      where: {
+        id,
+      },
       relations: ['team'],
     });
   }
@@ -63,20 +88,32 @@ export class PlayersService {
     const player = await this.findOne(id);
 
     if (!player) {
-      throw new Error('Jogador não encontrado');
+      throw new NotFoundException('Jogador não encontrado.');
     }
 
-    const team = await this.teamRepository.findOneBy({
-      id: data.teamId,
+    const team = await this.teamRepository.findOne({
+      where: {
+        id: data.teamId,
+      },
+      relations: ['players'],
     });
 
     if (!team) {
-      throw new Error('Time não encontrado');
+      throw new NotFoundException('Time não encontrado.');
     }
 
-    player.name = data.name;
+    if (
+      player.team.id !== team.id &&
+      team.players.length >= 15
+    ) {
+      throw new BadRequestException(
+        'Este time já possui o limite máximo de 15 jogadores.',
+      );
+    }
+
+    player.name = data.name.trim();
     player.age = data.age;
-    player.position = data.position;
+    player.position = data.position.trim();
     player.team = team;
 
     return this.playerRepository.save(player);
@@ -86,27 +123,20 @@ export class PlayersService {
     const player = await this.findOne(id);
 
     if (!player) {
-      throw new Error('Jogador não encontrado');
+      throw new NotFoundException('Jogador não encontrado.');
     }
 
     return this.playerRepository.remove(player);
   }
 
   async averageAge() {
-    const players = await this.playerRepository.find();
-
-    const totalAge = players.reduce(
-      (sum, player) => sum + player.age,
-      0,
-    );
-
-    const average =
-      players.length > 0
-        ? totalAge / players.length
-        : 0;
+    const result = await this.playerRepository
+      .createQueryBuilder('player')
+      .select('AVG(player.age)', 'average')
+      .getRawOne();
 
     return {
-      averageAge: average,
+      averageAge: Number(result.average) || 0,
     };
   }
 }
